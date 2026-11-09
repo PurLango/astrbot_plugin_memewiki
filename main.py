@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 import datetime
 import json
 import os
 import re
+import shutil
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -13,7 +15,7 @@ from astrbot.api.star import Context, Star, StarTools, register
 
 
 PLUGIN_NAME = "astrbot_plugin_memewiki"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 
 QUESTION_PATTERN = re.compile(
     r"(?:是)?(?:什么梗|啥梗|什么来头|什么来历|什么出处|什么意思|啥意思|"
@@ -82,18 +84,40 @@ class MemeWikiPlugin(Star):
     def __init__(self, context: Context, config: dict[str, Any]):
         super().__init__(context)
         self.config = config
-        self._db_path = Path(__file__).resolve().parent / "data" / "memes.db"
+        self._bundled_db_path = Path(__file__).resolve().parent / "data" / "memes.db"
         self._data_dir = Path(StarTools.get_data_dir(PLUGIN_NAME))
         self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._db_path = self._data_dir / "memes.db"
+        if not self._db_path.exists():
+            shutil.copy2(self._bundled_db_path, self._db_path)
         self._terms_path = self._data_dir / "custom_terms.json"
         self._terms_lock = asyncio.Lock()
+        self._db_write_lock = asyncio.Lock()
         self._custom_terms = self._load_custom_terms()
         self._load_database_index()
+        self.page_api = None
+        self._register_page_api()
         logger.info(
             "[memewiki] 已加载，内置词库=%s，自定义作用域=%d",
             self._db_path.exists(),
             len(self._custom_terms),
         )
+
+    def _register_page_api(self) -> None:
+        if not callable(getattr(self.context, "register_web_api", None)):
+            logger.warning("[memewiki] 当前 AstrBot 不支持插件拓展页 API")
+            return
+        try:
+            try:
+                from .page_api import MemeWikiPageApi
+            except ImportError:
+                from page_api import MemeWikiPageApi
+
+            self.page_api = MemeWikiPageApi(self)
+            self.page_api.register_routes()
+        except Exception as exc:
+            self.page_api = None
+            logger.warning("[memewiki] 管理页 API 注册失败：%s", exc)
 
     def _config(self, key: str, default: Any) -> Any:
         value = self.config.get(key, default)
@@ -204,7 +228,9 @@ class MemeWikiPlugin(Star):
             return None
         uri = f"{self._db_path.resolve().as_uri()}?mode=ro"
         try:
-            with sqlite3.connect(uri, uri=True, timeout=2) as conn:
+            with contextlib.closing(
+                sqlite3.connect(uri, uri=True, timeout=2)
+            ) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM memes WHERE title = ? LIMIT 1", (title,)
@@ -222,7 +248,9 @@ class MemeWikiPlugin(Star):
             return
         uri = f"{self._db_path.resolve().as_uri()}?mode=ro"
         try:
-            with sqlite3.connect(uri, uri=True, timeout=2) as conn:
+            with contextlib.closing(
+                sqlite3.connect(uri, uri=True, timeout=2)
+            ) as conn:
                 for title, aliases in conn.execute("SELECT title, aliases FROM memes"):
                     title_text = str(title or "").strip()
                     if not title_text:
@@ -429,3 +457,8 @@ class MemeWikiPlugin(Star):
             logger.info("[memewiki] 自动预查命中：%s", query)
         except Exception as exc:
             logger.warning("[memewiki] 临时上下文注入失败：%s", exc)
+
+    async def terminate(self):
+        if self.page_api is not None:
+            self.page_api.unregister_routes()
+            await self.page_api.stop_sync()

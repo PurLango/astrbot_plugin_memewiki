@@ -11,6 +11,7 @@ except ModuleNotFoundError:
     api = types.ModuleType("astrbot.api")
     event = types.ModuleType("astrbot.api.event")
     star = types.ModuleType("astrbot.api.star")
+    web = types.ModuleType("astrbot.api.web")
 
     class Logger:
         def __getattr__(self, _name):
@@ -47,6 +48,14 @@ except ModuleNotFoundError:
     def register(*args, **kwargs):
         return lambda cls: cls
 
+    class Request:
+        args = {}
+        payload = {}
+
+        @classmethod
+        async def json(cls, default=None):
+            return cls.payload if isinstance(cls.payload, dict) else default
+
     api.logger = Logger()
     event.AstrMessageEvent = AstrMessageEvent
     event.filter = DummyFilter()
@@ -54,11 +63,13 @@ except ModuleNotFoundError:
     star.Star = Star
     star.StarTools = StarTools
     star.register = register
+    web.request = Request
     sys.modules.update(
         {
             "astrbot": astrbot,
             "astrbot.api": api,
             "astrbot.api.event": event,
             "astrbot.api.star": star,
+            "astrbot.api.web": web,
         }
     )

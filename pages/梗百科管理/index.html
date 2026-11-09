@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>梗百科管理</title>
+  <link rel="stylesheet" href="./app.css" />
+  <script src="./app.js?v=0.2.0" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">梗</span>
+        <div>
+          <h1>梗百科管理</h1>
+          <p>维护机器人真正认识、会用的网络语言</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="connectionState" class="status-chip loading">连接中</span>
+        <button id="syncButton" class="secondary-button" type="button">一键更新词库</button>
+        <button id="newButton" class="primary-button" type="button">新建词条</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="catalog-strip" aria-label="词库状态">
+        <div class="catalog-count">
+          <strong id="totalCount">—</strong>
+          <span>条本地词条</span>
+        </div>
+        <div class="catalog-meta">
+          <div><span>构建时间</span><strong id="builtAt">等待读取</strong></div>
+          <div><span>数据来源</span><strong id="dataSource">cnmeme.wiki</strong></div>
+          <div><span>数据库</span><strong id="databaseSize">—</strong></div>
+        </div>
+      </section>
+
+      <section id="syncPanel" class="sync-panel" hidden aria-live="polite">
+        <div class="sync-heading">
+          <div>
+            <strong id="syncPhase">准备更新</strong>
+            <span id="syncSummary">扫描社区公开词条，只补充本地没有的内容</span>
+          </div>
+          <span id="syncBadge" class="sync-badge">运行中</span>
+        </div>
+        <div class="progress-track"><span id="syncProgress"></span></div>
+        <div id="syncLogs" class="sync-logs"></div>
+      </section>
+
+      <section class="workbench">
+        <aside class="index-pane" aria-label="词条索引">
+          <div class="search-box">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="搜索名称、别名或标签" autocomplete="off" />
+            <button id="clearSearch" type="button" aria-label="清空搜索" hidden>×</button>
+          </div>
+          <div class="index-summary">
+            <span id="resultSummary">等待载入</span>
+            <button id="refreshButton" type="button">刷新</button>
+          </div>
+          <div id="entryList" class="entry-list" role="listbox" aria-label="搜索结果"></div>
+          <div class="pagination">
+            <button id="previousPage" type="button">上一页</button>
+            <span id="pageLabel">— / —</span>
+            <button id="nextPage" type="button">下一页</button>
+          </div>
+        </aside>
+
+        <section class="editor-pane" aria-label="词条编辑器">
+          <div id="emptyEditor" class="empty-editor">
+            <span class="empty-glyph" aria-hidden="true">词</span>
+            <h2>从左侧选择一个词条</h2>
+            <p>可以查看完整释义，也可以新建一条本地词条。</p>
+            <button id="emptyNewButton" class="primary-button" type="button">新建词条</button>
+          </div>
+
+          <form id="entryForm" hidden>
+            <div class="editor-heading">
+              <div>
+                <span id="editorMode">编辑词条</span>
+                <h2 id="editorTitle">未命名词条</h2>
+              </div>
+              <div class="editor-actions">
+                <button id="deleteButton" class="danger-button" type="button">删除</button>
+                <button id="saveButton" class="primary-button" type="submit">保存修改</button>
+              </div>
+            </div>
+
+            <div class="form-grid compact-fields">
+              <label>
+                <span>词条名称</span>
+                <input id="fieldTitle" name="title" maxlength="100" required />
+              </label>
+              <label>
+                <span>Slug</span>
+                <input id="fieldSlug" name="slug" maxlength="200" placeholder="留空时使用词条名称" />
+              </label>
+              <label>
+                <span>标签</span>
+                <input id="fieldTags" name="tags" maxlength="500" placeholder="多个标签可用顿号分隔" />
+              </label>
+              <label>
+                <span>别名</span>
+                <input id="fieldAliases" name="aliases" maxlength="1000" placeholder="多个别名用逗号分隔" />
+              </label>
+            </div>
+
+            <div class="form-grid text-fields">
+              <label>
+                <span>简要释义</span>
+                <textarea id="fieldSummary" name="summary" rows="4" maxlength="4000"></textarea>
+              </label>
+              <label>
+                <span>怎么用 / 怎么接</span>
+                <textarea id="fieldUsage" name="usage" rows="7" maxlength="10000"></textarea>
+              </label>
+              <label>
+                <span>来源</span>
+                <textarea id="fieldOrigin" name="origin" rows="7" maxlength="10000"></textarea>
+              </label>
+              <label>
+                <span>其他内容</span>
+                <textarea id="fieldOther" name="other" rows="7" maxlength="10000" placeholder="演化、相关词条或备注"></textarea>
+              </label>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+</body>
+</html>
