@@ -142,7 +142,7 @@ class MemeWikiPageApi:
             return
         routes = (
             ("/state", self.state, ["GET"], "MemeWiki state"),
-            ("/entries", self.entries, ["GET"], "MemeWiki entries"),
+            ("/entries", self.entries, ["GET", "POST"], "MemeWiki entries"),
             ("/entry", self.entry, ["GET"], "MemeWiki entry"),
             ("/entry/save", self.save_entry, ["POST"], "Save MemeWiki entry"),
             ("/entry/delete", self.delete_entry, ["POST"], "Delete MemeWiki entry"),
@@ -278,10 +278,12 @@ class MemeWikiPageApi:
 
     async def entries(self) -> dict[str, Any]:
         try:
-            query = str(request.args.get("query") or "").strip()[:100]
-            page = self._bounded_int(request.args.get("page"), 1, 1, 100000)
+            payload = await self._payload()
+            values = payload or request.args
+            query = str(values.get("query") or "").strip()[:100]
+            page = self._bounded_int(values.get("page"), 1, 1, 100000)
             page_size = self._bounded_int(
-                request.args.get("page_size"), 30, 10, 50
+                values.get("page_size"), 30, 10, 50
             )
             data = await asyncio.to_thread(
                 self._list_entries_sync, query, page, page_size

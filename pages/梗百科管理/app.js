@@ -138,8 +138,18 @@
   }
 
   async function loadEntries() {
-    const params = new URLSearchParams({ query: state.query, page: String(state.page), page_size: "30" });
-    renderEntries(await api("GET", `entries?${params}`));
+    try {
+      const data = await api("POST", "entries", {
+        query: state.query,
+        page: state.page,
+        page_size: 30,
+      });
+      renderEntries(data);
+    } catch (error) {
+      $("#resultSummary").textContent = "载入失败";
+      $("#entryList").innerHTML = `<div class="list-empty">词条列表载入失败<br />点击上方“刷新”重试</div>`;
+      throw error;
+    }
   }
 
   function showEditor(entry, isNew = false) {

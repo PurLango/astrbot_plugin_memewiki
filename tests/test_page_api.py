@@ -85,7 +85,12 @@ class MemeWikiPageApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(renamed["data"]["entry"]["title"], "改名词")
         self.assertIsNone(self.plugin._database_entry("新词"))
 
-        page_api.request.args = {"query": "改名", "page": "1", "page_size": "10"}
+        page_api.request.args = {}
+        page_api.request.payload = {
+            "query": "改名",
+            "page": 1,
+            "page_size": 10,
+        }
         listed = await self.api.entries()
         self.assertEqual(listed["data"]["total"], 1)
 
