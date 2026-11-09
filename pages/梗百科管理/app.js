@@ -41,11 +41,9 @@
   async function api(method, path, body = {}) {
     const client = await bridge();
     setConnection("ok", "已连接");
-    const url = new URL(String(path || ""), "https://astrbot-plugin-page.local/");
-    const endpoint = `page/${url.pathname.replace(/^\/+/, "")}`;
-    const params = Object.fromEntries(url.searchParams.entries());
+    const endpoint = `page/${String(path || "").replace(/^\/+/, "")}`.replace(/\/{2,}/g, "/");
     const result = method === "GET"
-      ? await client.apiGet(endpoint, Object.keys(params).length ? params : undefined)
+      ? await client.apiGet(endpoint)
       : await client.apiPost(endpoint, body);
     if (result?.status === "error") throw new Error(result.message || "请求失败");
     return result?.data ?? result;
@@ -173,7 +171,7 @@
 
   async function selectEntry(title) {
     try {
-      const data = await api("GET", `entry?title=${encodeURIComponent(title)}`);
+      const data = await api("POST", "entry", { title });
       showEditor(data.entry, false);
     } catch (error) {
       toast(error.message, "error");

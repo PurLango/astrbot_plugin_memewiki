@@ -143,7 +143,7 @@ class MemeWikiPageApi:
         routes = (
             ("/state", self.state, ["GET"], "MemeWiki state"),
             ("/entries", self.entries, ["GET", "POST"], "MemeWiki entries"),
-            ("/entry", self.entry, ["GET"], "MemeWiki entry"),
+            ("/entry", self.entry, ["GET", "POST"], "MemeWiki entry"),
             ("/entry/save", self.save_entry, ["POST"], "Save MemeWiki entry"),
             ("/entry/delete", self.delete_entry, ["POST"], "Delete MemeWiki entry"),
             ("/sync/start", self.start_sync, ["POST"], "Start MemeWiki sync"),
@@ -306,7 +306,9 @@ class MemeWikiPageApi:
         return dict(row) if row is not None else None
 
     async def entry(self) -> dict[str, Any]:
-        title = str(request.args.get("title") or "").strip()[:200]
+        payload = await self._payload()
+        values = payload or request.args
+        title = str(values.get("title") or "").strip()[:200]
         if not title:
             return self._error("缺少词条名称")
         data = await asyncio.to_thread(self._entry_sync, title)

@@ -68,6 +68,11 @@ class MemeWikiPageApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["aliases"], "测试别名")
 
     async def test_create_rename_search_and_delete_entry(self):
+        page_api.request.payload = {"title": "已有词"}
+        detail = await self.api.entry()
+        self.assertEqual(detail["status"], "ok")
+        self.assertEqual(detail["data"]["entry"]["summary"], "本地修改")
+
         page_api.request.payload = {
             "original_title": "",
             "entry": {"title": "新词", "summary": "新释义", "aliases": "新别名"},
