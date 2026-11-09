@@ -27,7 +27,7 @@
   }
 
   async function bridge() {
-    for (let index = 0; index < 60; index += 1) {
+    for (let index = 0; index < 150; index += 1) {
       const value = getBridge();
       if (value?.apiGet && value?.apiPost) {
         if (typeof value.ready === "function") await value.ready();
@@ -40,6 +40,7 @@
 
   async function api(method, path, body = {}) {
     const client = await bridge();
+    setConnection("ok", "已连接");
     const url = new URL(String(path || ""), "https://astrbot-plugin-page.local/");
     const endpoint = `page/${url.pathname.replace(/^\/+/, "")}`;
     const params = Object.fromEntries(url.searchParams.entries());
@@ -81,7 +82,7 @@
     const badge = $("#syncBadge");
     badge.className = `sync-badge ${current.state}`;
     badge.textContent = current.state === "running" ? "运行中" : current.state === "done" ? "已完成" : "失败";
-    let summary = `已扫描 ${Number(current.scanned || 0)} 条`;
+    let summary = `已检查 ${Number(current.scanned || 0)} 条最新词条`;
     let progress = current.state === "done" ? 100 : 8;
     if (current.pending > 0) {
       summary = `发现 ${current.pending} 条新增，已下载 ${current.fetched || 0} 条`;
@@ -235,7 +236,7 @@
       const data = await api("POST", "sync/start");
       renderSync(data.sync);
       startPolling();
-      toast("已开始扫描社区词库");
+      toast("已开始检查社区词库更新");
     } catch (error) {
       button.disabled = false;
       toast(error.message, "error");
@@ -279,8 +280,11 @@
     bindEvents();
     try {
       await bridge();
-      await Promise.all([loadState(), loadEntries()]);
       setConnection("ok", "已连接");
+      const results = await Promise.allSettled([loadState(), loadEntries()]);
+      results.forEach((result) => {
+        if (result.status === "rejected") toast(result.reason?.message || "页面数据载入失败", "error");
+      });
     } catch (error) {
       setConnection("error", "连接失败");
       toast(error.message, "error");

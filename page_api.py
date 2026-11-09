@@ -21,6 +21,34 @@ from astrbot.api.web import request
 
 PAGE_API_PREFIX = "/astrbot_plugin_memewiki/page"
 PUBLIC_API = "https://cnmeme.wiki/api/v1/public/memes"
+SOURCE_TIMEZONE = datetime.timezone(datetime.timedelta(hours=8))
+
+
+def _parse_timestamp(value: Any) -> datetime.datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=SOURCE_TIMEZONE)
+    return parsed.astimezone(datetime.timezone.utc)
+
+
+def _newest_cursor(existing: str, candidate: str) -> str:
+    if not candidate:
+        return existing
+    if not existing:
+        return candidate
+    existing_time = _parse_timestamp(existing)
+    candidate_time = _parse_timestamp(candidate)
+    if candidate_time is not None and (
+        existing_time is None or candidate_time > existing_time
+    ):
+        return candidate
+    return existing
 
 
 def _inline_text(value: Any) -> str:
@@ -404,18 +432,29 @@ class MemeWikiPageApi:
                 await asyncio.sleep(min(8, 1.5 * (2**attempt)))
         raise RuntimeError("请求重试次数已用尽")
 
-    def _local_identity_sync(self) -> tuple[set[str], set[str]]:
+    def _local_identity_sync(self) -> tuple[set[str], set[str], str, str]:
         with contextlib.closing(
             sqlite3.connect(str(self.plugin._db_path), timeout=3)
         ) as conn:
             rows = conn.execute("SELECT title, slug FROM memes").fetchall()
-        return ({str(row[0]) for row in rows}, {str(row[1] or "") for row in rows})
+            meta = {}
+            with contextlib.suppress(sqlite3.Error):
+                meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
+        return (
+            {str(row[0]) for row in rows},
+            {str(row[1] or "") for row in rows},
+            str(meta.get("last_remote_updated_at", "")),
+            str(meta.get("built_at", "")),
+        )
 
-    def _apply_new_entries_sync(self, rows: list[dict[str, str]]) -> int:
-        backup_dir = self.plugin._data_dir / "backups"
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        shutil.copy2(self.plugin._db_path, backup_dir / f"memes-{stamp}.db")
+    def _apply_sync_result_sync(
+        self, rows: list[dict[str, str]], remote_cursor: str
+    ) -> int:
+        if rows:
+            backup_dir = self.plugin._data_dir / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            shutil.copy2(self.plugin._db_path, backup_dir / f"memes-{stamp}.db")
         inserted = 0
         with contextlib.closing(
             sqlite3.connect(str(self.plugin._db_path), timeout=8)
@@ -442,11 +481,14 @@ class MemeWikiPageApi:
                 inserted += max(0, cursor.rowcount)
             total = int(conn.execute("SELECT COUNT(*) FROM memes").fetchone()[0])
             conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
-            built_at = datetime.datetime.now().isoformat(sep=" ", timespec="seconds")
-            conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('built_at', ?)",
-                (built_at,),
-            )
+            if inserted:
+                built_at = datetime.datetime.now().isoformat(
+                    sep=" ", timespec="seconds"
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES ('built_at', ?)",
+                    (built_at,),
+                )
             conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('count', ?)",
                 (str(total),),
@@ -455,32 +497,58 @@ class MemeWikiPageApi:
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('source', ?)",
                 ("cnmeme.wiki /api/v1/public/memes",),
             )
+            if remote_cursor:
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) "
+                    "VALUES ('last_remote_updated_at', ?)",
+                    (remote_cursor,),
+                )
             conn.commit()
         return inserted
 
     async def _run_sync(self) -> None:
         try:
-            self._set_status(state="running", phase="扫描社区词条", scanned=0)
-            self._log_status("开始扫描 cnmeme.wiki 公开词条")
+            self._set_status(state="running", phase="检查最新词条", scanned=0)
+            self._log_status("开始检查 cnmeme.wiki 最新词条")
+            local_titles, local_slugs, remote_cursor, built_at = (
+                await asyncio.to_thread(self._local_identity_sync)
+            )
+            cutoff_text = remote_cursor or built_at
+            cutoff = _parse_timestamp(cutoff_text)
+            if not remote_cursor and cutoff is not None:
+                cutoff -= datetime.timedelta(days=1)
+            if remote_cursor:
+                self._log_status("已读取上次更新位置，仅检查之后的内容")
+            elif cutoff is not None:
+                self._log_status("首次增量更新，按本地构建时间回看一天")
             site_items: list[dict[str, Any]] = []
             offset = 0
+            newest_cursor = ""
+            reached_cutoff = False
             while True:
                 data = await self._fetch_json(f"{PUBLIC_API}?limit=30&offset={offset}")
                 items = data.get("items", []) if isinstance(data, dict) else []
                 if not isinstance(items, list) or not items:
                     break
-                site_items.extend(item for item in items if isinstance(item, dict))
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    updated_text = str(item.get("updated_at") or "").strip()
+                    updated_at = _parse_timestamp(updated_text)
+                    if not newest_cursor and updated_text:
+                        newest_cursor = updated_text
+                    if cutoff is not None and updated_at is not None and updated_at < cutoff:
+                        reached_cutoff = True
+                        break
+                    site_items.append(item)
                 offset += len(items)
                 self._set_status(scanned=len(site_items))
-                if len(site_items) % 300 == 0:
-                    self._log_status(f"已扫描 {len(site_items)} 条")
-                if not data.get("has_more"):
+                if offset % 300 == 0:
+                    self._log_status(f"已检查 {len(site_items)} 条最新词条")
+                if reached_cutoff or not data.get("has_more"):
                     break
                 await asyncio.sleep(0.12)
 
-            local_titles, local_slugs = await asyncio.to_thread(
-                self._local_identity_sync
-            )
             pending = [
                 item
                 for item in site_items
@@ -489,9 +557,14 @@ class MemeWikiPageApi:
             ]
             self._set_status(phase="下载新增词条", pending=len(pending), fetched=0)
             self._log_status(
-                f"社区共 {len(site_items)} 条，本地缺少 {len(pending)} 条"
+                f"已检查 {len(site_items)} 条最新内容，发现 {len(pending)} 条新增"
             )
+            cursor_to_save = _newest_cursor(remote_cursor, newest_cursor)
             if not pending:
+                async with self.plugin._db_write_lock:
+                    await asyncio.to_thread(
+                        self._apply_sync_result_sync, [], cursor_to_save
+                    )
                 self._set_status(
                     state="done",
                     phase="已是最新",
@@ -518,7 +591,9 @@ class MemeWikiPageApi:
 
             self._set_status(phase="写入本地词库")
             async with self.plugin._db_write_lock:
-                added = await asyncio.to_thread(self._apply_new_entries_sync, rows)
+                added = await asyncio.to_thread(
+                    self._apply_sync_result_sync, rows, cursor_to_save
+                )
                 await asyncio.to_thread(self.plugin._load_database_index)
             self._set_status(
                 state="done",

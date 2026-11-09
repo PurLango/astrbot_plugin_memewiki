@@ -23,6 +23,9 @@ def make_plugin(temp_dir: str) -> MemeWikiPlugin:
         )
         conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute(
+            "INSERT INTO meta VALUES ('built_at', '2026-11-05 12:48:06')"
+        )
+        conn.execute(
             "INSERT INTO memes VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ("已有词", "existing", "测试", "本地用法", "本地来源", "", "本地修改", "旧称"),
         )
@@ -92,13 +95,22 @@ class MemeWikiPageApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.plugin._database_entry("改名词"))
 
     async def test_sync_only_adds_missing_entries(self):
+        fetched_urls = []
         responses = {
             f"{page_api.PUBLIC_API}?limit=30&offset=0": {
                 "items": [
-                    {"title": "已有词", "slug": "existing"},
-                    {"title": "社区新词", "slug": "community-new"},
+                    {
+                        "title": "社区新词",
+                        "slug": "community-new",
+                        "updated_at": "2026-11-09T12:00:00+08:00",
+                    },
+                    {
+                        "title": "已有词",
+                        "slug": "existing",
+                        "updated_at": "2026-11-04T12:00:00+08:00",
+                    },
                 ],
-                "has_more": False,
+                "has_more": True,
             },
             f"{page_api.PUBLIC_API}/community-new": {
                 "title": "社区新词",
@@ -109,6 +121,7 @@ class MemeWikiPageApiTests(unittest.IsolatedAsyncioTestCase):
         }
 
         async def fake_fetch(url, retries=4):
+            fetched_urls.append(url)
             return responses[url]
 
         self.api._fetch_json = fake_fetch
@@ -123,6 +136,35 @@ class MemeWikiPageApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["state"], "done")
         self.assertEqual(status["added"], 1)
         self.assertEqual(len(list((self.plugin._data_dir / "backups").glob("*.db"))), 1)
+        self.assertEqual(
+            fetched_urls,
+            [
+                f"{page_api.PUBLIC_API}?limit=30&offset=0",
+                f"{page_api.PUBLIC_API}/community-new",
+            ],
+        )
+        with contextlib.closing(sqlite3.connect(self.plugin._db_path)) as conn:
+            cursor = conn.execute(
+                "SELECT value FROM meta WHERE key = 'last_remote_updated_at'"
+            ).fetchone()[0]
+        self.assertEqual(cursor, "2026-11-09T12:00:00+08:00")
+
+        second_api = MemeWikiPageApi(self.plugin)
+        second_fetches = []
+
+        async def second_fetch(url, retries=4):
+            second_fetches.append(url)
+            return responses[f"{page_api.PUBLIC_API}?limit=30&offset=0"]
+
+        second_api._fetch_json = second_fetch
+        await second_api._run_sync()
+        self.assertEqual(
+            second_fetches, [f"{page_api.PUBLIC_API}?limit=30&offset=0"]
+        )
+        self.assertEqual(second_api._status_snapshot()["state"], "done")
+        self.assertEqual(
+            len(list((self.plugin._data_dir / "backups").glob("*.db"))), 1
+        )
 
 
 if __name__ == "__main__":

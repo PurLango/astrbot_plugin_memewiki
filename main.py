@@ -15,7 +15,7 @@ from astrbot.api.star import Context, Star, StarTools, register
 
 
 PLUGIN_NAME = "astrbot_plugin_memewiki"
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.2.1"
 
 QUESTION_PATTERN = re.compile(
     r"(?:是)?(?:什么梗|啥梗|什么来头|什么来历|什么出处|什么意思|啥意思|"

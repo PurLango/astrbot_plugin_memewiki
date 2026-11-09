@@ -2,7 +2,7 @@ name: astrbot_plugin_memewiki
 display_name: 梗百科
 author: PurLango
 description: 本地梗百科与群内黑话插件，支持指令查询、AI 工具查询和按需上下文注入。
-version: 0.2.0
+version: 0.2.1
 repo: https://github.com/PurLango/astrbot_plugin_memewiki
 astrbot_version: ">=4.24.0"
 pages:
