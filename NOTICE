@@ -1,0 +1,24 @@
+梗百科（AstrBot）
+=================
+
+本插件是面向 AstrBot 的独立实现，参考并保留以下项目的设计与来源说明：
+
+1. astrbot_plugin_memewiki
+   - 作者：in1t1a1
+   - 版本：1.7.0
+   - 许可：MIT
+   - 状态：原 GitHub 仓库已删除
+
+2. dsh-memewiki
+   - 作者及维护者：thawline / dsh-memewiki contributors
+   - 仓库：https://github.com/thawline/dsh-memewiki
+   - 许可：MIT
+   - 本项目参考其本地匹配规则、自动预查设计，并使用其随仓库提供的词库快照
+
+3. 词库数据
+   - 文件：data/memes.db
+   - 当前快照：6792 条
+   - 来源：原 astrbot_plugin_memewiki 随包词库及 cnmeme.wiki 公开词条
+   - 词条内容版权归各原作者与来源平台；本项目仅提供本地读取和格式适配
+
+本项目没有照搬 DSH 的插件外壳、设置页或社区提交功能。

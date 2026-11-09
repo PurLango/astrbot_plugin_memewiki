@@ -1,0 +1,26 @@
+{
+  "auto_prefetch": {
+    "description": "自动识别并查询梗",
+    "type": "bool",
+    "hint": "仅在消息像是在询问梗或只包含一个短词时查询本地词库，命中后临时提供给模型。",
+    "default": true
+  },
+  "max_query_chars": {
+    "description": "自动预查最大词长",
+    "type": "int",
+    "hint": "只对不超过该长度的候选词自动预查，范围 2–20。",
+    "default": 12
+  },
+  "roast_enabled": {
+    "description": "启用串子程度",
+    "type": "bool",
+    "hint": "开启后向模型附加玩梗尺度；关闭时由当前人格自行判断。",
+    "default": false
+  },
+  "roast_level": {
+    "description": "串子程度",
+    "type": "int",
+    "hint": "范围 0–100，只在启用串子程度时生效。",
+    "default": 50
+  }
+}
